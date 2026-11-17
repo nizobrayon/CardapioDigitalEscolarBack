@@ -7,6 +7,122 @@ import pool from "../database.js";
 
 const router = Router();
 
+/* ========================================
+   CADASTRAR USUÁRIO
+======================================== */
+router.post("/", async (req, res) => {
+  console.log("CHEGOU AQUI!!!!")
+  const {
+    nomeUsuario,
+    emailUsuario,
+    senha,
+    tipoUsuario,
+    raAluno,
+    crnNutricionista,
+  } = req.body;
+
+  if (!nomeUsuario?.trim() || !emailUsuario?.trim() || !senha) {
+    return res.status(400).json({ mensagem: "Informe nome, e-mail e senha." });
+  }
+
+  let conexao;
+  try {
+    conexao = await pool.connect();
+    await conexao.query("BEGIN");
+
+    const senhaHash = await bcrypt.hash(senha, 10);
+
+    const usuarioResult = await conexao.query(
+      `INSERT INTO usuario (nomeusuario, emailusuario, senhausuario)
+       VALUES ($1, $2, $3)
+       RETURNING idusuario, nomeusuario, emailusuario`,
+      [nomeUsuario.trim(), emailUsuario.trim().toLowerCase(), senhaHash]
+    );
+
+    const idUsuario = usuarioResult.rows[0].idusuario;
+
+    if (tipoUsuario === "aluno") {
+      await conexao.query(
+        `INSERT INTO aluno (idusuario, raaluno, turmaaluno)
+         VALUES ($1, $2, NULL)`,
+        [idUsuario, String(raAluno || "").trim()]
+      );
+    } else if (tipoUsuario === "nutricionista") {
+      await conexao.query(
+        `INSERT INTO nutricionista (idusuario, crnnutricionista)
+         VALUES ($1, $2)`,
+        [idUsuario, Number(crnNutricionista)]
+      );
+    }
+
+    await conexao.query("COMMIT");
+
+    return res.status(201).json({
+      mensagem: "Usuário cadastrado com sucesso!",
+      usuario: usuarioResult.rows[0],
+    });
+  } catch (erro) {
+    if (conexao) await conexao.query("ROLLBACK").catch(() => {});
+    console.error("Erro ao cadastrar:", erro);
+    if (erro.code === "23505") {
+      return res.status(409).json({ mensagem: "E-mail ou RA já cadastrado." });
+    }
+    return res.status(500).json({ mensagem: "Erro ao cadastrar usuário." });
+  } finally {
+    if (conexao) conexao.release();
+  }
+});
+
+/* ========================================
+   LOGIN
+======================================== */
+router.post("/login", async (req, res) => {
+  const { emailUsuario, raAluno, senha } = req.body;
+
+  if (!emailUsuario?.trim() || !senha) {
+    return res.status(400).json({ mensagem: "Informe e-mail e senha." });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT u.idusuario, u.nomeusuario, u.emailusuario, u.senhausuario,
+              a.raaluno
+       FROM usuario u
+       LEFT JOIN aluno a ON a.idusuario = u.idusuario
+       WHERE u.emailusuario = $1`,
+      [emailUsuario.trim().toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ mensagem: "Usuário não encontrado." });
+    }
+
+    const user = result.rows[0];
+
+    if (raAluno && user.raaluno && String(user.raaluno) !== String(raAluno).trim()) {
+      return res.status(401).json({ mensagem: "RA inválido." });
+    }
+
+    const senhaOk = await bcrypt.compare(senha, user.senhausuario || "");
+    if (!senhaOk) {
+      return res.status(401).json({ mensagem: "Senha inválida." });
+    }
+
+    return res.json({
+      mensagem: "Login realizado com sucesso!",
+      usuario: {
+        idusuario: user.idusuario,
+        nomeusuario: user.nomeusuario,
+        emailusuario: user.emailusuario,
+        raaluno: user.raaluno,
+      },
+    });
+  } catch (erro) {
+    console.error("Erro no login:", erro);
+    return res.status(500).json({ mensagem: "Erro ao realizar login." });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
 
