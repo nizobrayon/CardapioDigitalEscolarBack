@@ -104,3 +104,61 @@ export async function findAll(req, res) {
     });
   }
 }
+
+export async function remove(req, res) {
+  const { id } = req.params;
+  const { idUsuario } = req.body;
+
+  if (!idUsuario) {
+    return res.status(400).json({
+      mensagem: "Informe o usuário autenticado.",
+    });
+  }
+
+  try {
+    const aluno = await pool.query(
+      "SELECT idaluno FROM aluno WHERE idusuario = $1",
+      [idUsuario]
+    );
+
+    if (aluno.rows.length === 0) {
+      return res.status(404).json({
+        mensagem: "Aluno não encontrado.",
+      });
+    }
+
+    const feedback = await pool.query(
+      `SELECT f.idfeedback, f.idaluno
+       FROM feedback f
+       WHERE f.idfeedback = $1`,
+      [id]
+    );
+
+    if (feedback.rows.length === 0) {
+      return res.status(404).json({
+        mensagem: "Avaliação não encontrada.",
+      });
+    }
+
+    if (feedback.rows[0].idaluno !== aluno.rows[0].idaluno) {
+      return res.status(403).json({
+        mensagem: "Você só pode excluir suas próprias avaliações.",
+      });
+    }
+
+    await pool.query(
+      "DELETE FROM feedback WHERE idfeedback = $1",
+      [id]
+    );
+
+    return res.json({
+      mensagem: "Avaliação excluída com sucesso!",
+    });
+  } catch (erro) {
+    console.error("Erro ao excluir avaliação:", erro);
+
+    return res.status(500).json({
+      mensagem: "Erro ao excluir avaliação.",
+    });
+  }
+}

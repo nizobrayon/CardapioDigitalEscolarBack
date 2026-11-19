@@ -117,3 +117,61 @@ export async function updateStatus(req, res) {
     });
   }
 }
+
+export async function remove(req, res) {
+  const { id } = req.params;
+  const { idUsuario } = req.body;
+
+  if (!idUsuario) {
+    return res.status(400).json({
+      mensagem: "Informe o usuário autenticado.",
+    });
+  }
+
+  try {
+    const aluno = await pool.query(
+      "SELECT idaluno FROM aluno WHERE idusuario = $1",
+      [idUsuario]
+    );
+
+    if (aluno.rows.length === 0) {
+      return res.status(404).json({
+        mensagem: "Aluno não encontrado.",
+      });
+    }
+
+    const sugestao = await pool.query(
+      `SELECT s.idsugestao, s.idaluno, s.statussugestao
+       FROM sugestao s
+       WHERE s.idsugestao = $1`,
+      [id]
+    );
+
+    if (sugestao.rows.length === 0) {
+      return res.status(404).json({
+        mensagem: "Sugestão não encontrada.",
+      });
+    }
+
+    if (sugestao.rows[0].idaluno !== aluno.rows[0].idaluno) {
+      return res.status(403).json({
+        mensagem: "Você só pode excluir suas próprias sugestões.",
+      });
+    }
+
+    await pool.query(
+      "DELETE FROM sugestao WHERE idsugestao = $1",
+      [id]
+    );
+
+    return res.json({
+      mensagem: "Sugestão excluída com sucesso!",
+    });
+  } catch (erro) {
+    console.error("Erro ao excluir sugestão:", erro);
+
+    return res.status(500).json({
+      mensagem: "Erro ao excluir sugestão.",
+    });
+  }
+}

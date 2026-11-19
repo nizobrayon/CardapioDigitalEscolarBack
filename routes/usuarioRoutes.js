@@ -86,9 +86,12 @@ router.post("/login", async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT u.idusuario, u.nomeusuario, u.emailusuario, u.senhausuario,
-              a.raaluno
+              a.raaluno,
+              n.idnutricionista,
+              n.crnnutricionista
        FROM usuario u
        LEFT JOIN aluno a ON a.idusuario = u.idusuario
+       LEFT JOIN nutricionista n ON n.idusuario = u.idusuario
        WHERE u.emailusuario = $1`,
       [emailUsuario.trim().toLowerCase()]
     );
@@ -99,7 +102,14 @@ router.post("/login", async (req, res) => {
 
     const user = result.rows[0];
 
-    if (raAluno && user.raaluno && String(user.raaluno) !== String(raAluno).trim()) {
+    let tipoUsuario = "aluno";
+    if (user.idnutricionista) {
+      tipoUsuario = "nutricionista";
+    } else if (user.raaluno) {
+      tipoUsuario = "aluno";
+    }
+
+    if (tipoUsuario === "aluno" && raAluno && String(user.raaluno) !== String(raAluno).trim()) {
       return res.status(401).json({ mensagem: "RA inválido." });
     }
 
@@ -114,7 +124,10 @@ router.post("/login", async (req, res) => {
         idusuario: user.idusuario,
         nomeusuario: user.nomeusuario,
         emailusuario: user.emailusuario,
+        tipoUsuario,
         raaluno: user.raaluno,
+        idnutricionista: user.idnutricionista,
+        crnnutricionista: user.crnnutricionista,
       },
     });
   } catch (erro) {
